@@ -2,32 +2,35 @@
 
 Media probing helpers built around ffprobe, ffmpeg, and optional libmpv integration.
 
-## Status
+## What This Crate Is
 
-Extracted from CrispyTivi. Intended as a reusable Rust crate for stream inspection and screenshot capture.
+`crispy-media-probe` inspects IPTV/media streams and captures screenshots using common external media tools. It is designed for diagnostics, validation pipelines, and automated media QA.
 
-## What This Crate Provides
+## What It Provides
 
-- ffprobe-based media probing
-- ffmpeg-based screenshot capture
-- HLS variant inspection helpers
+- stream probing via ffprobe
+- audio/video metadata extraction
+- screenshot capture via ffmpeg
+- HLS variant parsing and selection helpers
 - bitrate profiling
-- optional libmpv backend for environments that bundle mpv
-- resolution mismatch checks
+- label-vs-resolution mismatch checks
+- optional libmpv-based probe/screenshot path
 
 ## Installation
 
 ```toml
 [dependencies]
-crispy-media-probe = "0.1"
+crispy-media-probe = "0.1.1"
 ```
 
 Optional feature:
 
 ```toml
 [dependencies]
-crispy-media-probe = { version = "0.1", features = ["libmpv-backend"] }
+crispy-media-probe = { version = "0.1.1", features = ["libmpv-backend"] }
 ```
+
+MSRV: Rust `1.85`
 
 ## Quick Start
 
@@ -43,20 +46,25 @@ println!("streams found: {}", info.stream_count);
 
 ## Runtime Requirements
 
-Depending on the path used, callers may need:
+Depending on which API path you use, you may need:
+
 - `ffprobe`
 - `ffmpeg`
-- `libmpv`
+- `libmpv` when `libmpv-backend` is enabled
 
-These requirements must be documented explicitly in the final public repo.
-
-## Primary Use Cases
+## Typical Uses
 
 - stream diagnostics
 - validation pipelines
 - screenshot generation
 - automated media QA
 
-## Caveats
+## Current Limitations
 
-- this crate needs strongest runtime/platform documentation before public release
+- external binaries are not bundled by the crate
+- platform support depends on the caller providing working ffmpeg/ffprobe/libmpv installations
+- this crate does not queue, persist, or orchestrate probe jobs
+
+## License
+
+See `LICENSE.md` and `NOTICE.md`.
