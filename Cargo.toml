@@ -1,0 +1,31 @@
+[package]
+name = "crispy-media-probe"
+description = "ffprobe/ffmpeg stream analysis and screenshot capture"
+version = "0.1.1"
+edition = "2024"
+license = "CC-BY-NC-SA-4.0"
+repository = "https://github.com/moabualruz/crispy-media-probe"
+homepage = "https://github.com/moabualruz/crispy-media-probe"
+documentation = "https://docs.rs/crispy-media-probe"
+readme = "README.md"
+keywords = ["iptv", "ffprobe", "ffmpeg", "media", "probe"]
+categories = ["multimedia", "network-programming"]
+rust-version = "1.85"
+
+[features]
+default = []
+libmpv-backend = ["libloading"]
+
+[dependencies]
+crispy-iptv-types = "0.1.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["process", "time", "rt", "macros", "sync"] }
+tracing = "0.1"
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["stream", "rustls-tls-native-roots", "json", "gzip"] }
+libloading = { version = "0.8", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
