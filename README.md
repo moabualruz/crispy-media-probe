@@ -9,8 +9,10 @@ Media probing helpers built around ffprobe, ffmpeg, and optional libmpv integrat
 ## What It Provides
 
 - stream probing via ffprobe
+- raw stream summaries from ffprobe
 - audio/video metadata extraction
 - screenshot capture via ffmpeg
+- optional screenshot capture at a specific seek offset
 - HLS variant parsing and selection helpers
 - bitrate profiling
 - label-vs-resolution mismatch checks
@@ -39,7 +41,7 @@ use crispy_media_probe::probe_stream;
 
 # async fn demo() -> Result<(), Box<dyn std::error::Error>> {
 let info = probe_stream("http://example.com/stream.m3u8", 10).await?;
-println!("streams found: {}", info.stream_count);
+println!("streams found: {}", info.streams.len());
 # Ok(())
 # }
 ```
@@ -64,6 +66,7 @@ Depending on which API path you use, you may need:
 - external binaries are not bundled by the crate
 - platform support depends on the caller providing working ffmpeg/ffprobe/libmpv installations
 - this crate does not queue, persist, or orchestrate probe jobs
+- HLS selection currently returns the chosen URL rather than a richer decision object
 
 ## License
 

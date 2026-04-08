@@ -24,8 +24,22 @@ pub async fn capture_screenshot(
     output_path: &str,
     timeout_secs: u64,
 ) -> Result<(), ProbeError> {
+    capture_screenshot_at_offset(url, output_path, timeout_secs, None).await
+}
+
+/// Capture a screenshot, optionally seeking to a specific offset first.
+pub async fn capture_screenshot_at_offset(
+    url: &str,
+    output_path: &str,
+    timeout_secs: u64,
+    seek_offset_secs: Option<f64>,
+) -> Result<(), ProbeError> {
     let mut cmd = Command::new("ffmpeg");
-    cmd.args(["-y", "-i", url, "-frames:v", "1", output_path])
+    cmd.arg("-y");
+    if let Some(offset) = seek_offset_secs {
+        cmd.args(["-ss", &offset.to_string()]);
+    }
+    cmd.args(["-i", url, "-frames:v", "1", output_path])
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .stdin(Stdio::null());

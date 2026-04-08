@@ -108,7 +108,7 @@ pub fn select_best_variant_from_content(content: &str, base_url: &str) -> Option
 /// Translated from IPTVChecker-Python `verify` + `extract_next_url`
 /// recursion with `visited` set for loop detection.
 pub async fn select_best_variant(playlist_url: &str, max_depth: u32) -> Result<String, ProbeError> {
-    let client = simple_http_client();
+    let client = simple_http_client()?;
     let mut visited = HashSet::new();
     select_best_variant_recursive(&client, playlist_url, max_depth, &mut visited).await
 }
@@ -168,12 +168,15 @@ fn looks_like_playlist(url: &str) -> bool {
 }
 
 /// Minimal HTTP client for HLS playlist fetching.
-fn simple_http_client() -> reqwest::Client {
+fn simple_http_client() -> Result<reqwest::Client, ProbeError> {
     reqwest::Client::builder()
         .user_agent("VLC/3.0.14")
         .timeout(std::time::Duration::from_secs(15))
         .build()
-        .unwrap_or_default()
+        .map_err(|e| ProbeError::ProcessFailed {
+            code: None,
+            stderr: format!("failed to build HLS HTTP client: {e}"),
+        })
 }
 
 // --- HLS tag attribute parsing ---

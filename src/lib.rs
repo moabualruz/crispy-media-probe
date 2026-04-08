@@ -42,9 +42,9 @@ pub use probe::{
     ProbeOptions, is_ffprobe_available, parse_ffprobe_json, probe_audio, probe_stream,
     probe_stream_with_options,
 };
-pub use screenshot::{capture_screenshot, is_ffmpeg_available, sanitize_filename};
+pub use screenshot::{capture_screenshot, capture_screenshot_at_offset, is_ffmpeg_available, sanitize_filename};
 pub use types::{
-    AudioInfo, HlsVariant, MediaInfo, VideoInfo, classify_resolution, height_to_label,
+    AudioInfo, HlsVariant, MediaInfo, MediaStream, VideoInfo, classify_resolution, height_to_label,
     parse_frame_rate,
 };
 

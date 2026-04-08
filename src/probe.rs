@@ -13,7 +13,7 @@ use tokio::process::Command;
 use tracing::{debug, warn};
 
 use crate::error::ProbeError;
-use crate::types::{AudioInfo, MediaInfo, VideoInfo, classify_resolution, parse_frame_rate};
+use crate::types::{AudioInfo, MediaInfo, MediaStream, VideoInfo, classify_resolution, parse_frame_rate};
 
 /// Raw ffprobe JSON output structure.
 #[derive(Debug, Deserialize)]
@@ -130,6 +130,19 @@ pub async fn probe_stream_with_options(
     };
 
     Ok(MediaInfo {
+        streams: streams
+            .iter()
+            .map(|stream| MediaStream {
+                codec_type: stream.codec_type.clone(),
+                codec_name: stream.codec_name.clone(),
+                width: stream.width,
+                height: stream.height,
+                fps: stream.r_frame_rate.as_deref().and_then(parse_frame_rate),
+                bitrate: stream.bit_rate.as_deref().and_then(|b| b.parse::<u64>().ok()),
+                channels: stream.channels,
+                sample_rate: stream.sample_rate.as_deref().and_then(|r| r.parse::<u32>().ok()),
+            })
+            .collect(),
         video,
         audio,
         format_name,
@@ -344,6 +357,19 @@ pub fn parse_ffprobe_json(json_str: &str) -> Result<MediaInfo, ProbeError> {
     };
 
     Ok(MediaInfo {
+        streams: streams
+            .iter()
+            .map(|stream| MediaStream {
+                codec_type: stream.codec_type.clone(),
+                codec_name: stream.codec_name.clone(),
+                width: stream.width,
+                height: stream.height,
+                fps: stream.r_frame_rate.as_deref().and_then(parse_frame_rate),
+                bitrate: stream.bit_rate.as_deref().and_then(|b| b.parse::<u64>().ok()),
+                channels: stream.channels,
+                sample_rate: stream.sample_rate.as_deref().and_then(|r| r.parse::<u32>().ok()),
+            })
+            .collect(),
         video,
         audio,
         format_name,

@@ -6,6 +6,9 @@ use serde::{Deserialize, Serialize};
 /// Complete media information from ffprobe analysis.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct MediaInfo {
+    /// Raw stream summaries returned by ffprobe.
+    #[serde(default)]
+    pub streams: Vec<MediaStream>,
     /// Video stream information (absent for audio-only streams).
     pub video: Option<VideoInfo>,
     /// Audio stream information (absent for video-only streams).
@@ -16,6 +19,19 @@ pub struct MediaInfo {
     pub duration_secs: Option<f64>,
     /// Overall bitrate in bits/s, if known.
     pub overall_bitrate: Option<u64>,
+}
+
+/// Summary of a raw probed stream entry.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MediaStream {
+    pub codec_type: Option<String>,
+    pub codec_name: Option<String>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub fps: Option<f64>,
+    pub bitrate: Option<u64>,
+    pub channels: Option<u32>,
+    pub sample_rate: Option<u32>,
 }
 
 /// Video stream details extracted from ffprobe.
