@@ -122,6 +122,7 @@ fn probe_stream_mpv_blocking(url: &str, timeout_secs: u64) -> Result<MediaInfo, 
         .filter(|b| *b > 0);
 
     let info = MediaInfo {
+        streams: Vec::new(),
         video,
         audio,
         format_name,
