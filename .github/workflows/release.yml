@@ -10,7 +10,7 @@ on:
 
 jobs:
   release-check:
-    runs-on: [self-hosted, linux, x64, generic]
+    runs-on: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && github.actor == github.repository_owner && fromJSON('["self-hosted", "linux", "x64", "generic"]') || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
