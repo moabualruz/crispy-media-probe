@@ -8,7 +8,7 @@ on:
 
 jobs:
   test:
-    runs-on: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == github.repository_owner) && fromJSON('["self-hosted", "linux", "x64", "generic"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.actor == github.repository_owner || github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == github.repository_owner && github.actor == github.repository_owner) && fromJSON('["self-hosted", "linux", "x64", "generic"]') || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -16,6 +16,8 @@ jobs:
           toolchain: stable
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+      - name: test runner routing
+        run: python3 .github/test-ci-runner-routing.py
       - name: cargo fmt
         run: cargo fmt --check
       - name: cargo clippy
