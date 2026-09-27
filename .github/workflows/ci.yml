@@ -55,9 +55,6 @@ jobs:
         run: cargo fetch
       - name: verify runner routing contract
         run: python3 .github/test-ci-runner-routing.py
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: "3.3"
       - name: verify parsed checkout workflow contract
         run: ruby .github/test-ci-workflow.rb
       - name: archive checked out source for hosted jobs

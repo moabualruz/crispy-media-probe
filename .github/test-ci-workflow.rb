@@ -7,6 +7,8 @@ workflow = YAML.safe_load(File.read(".github/workflows/ci.yml"), aliases: false)
 release = YAML.safe_load(File.read(".github/workflows/release.yml"), aliases: false)
 jobs = workflow.fetch("jobs")
 steps = jobs.values.flat_map { |job| job.fetch("steps", []) }
+ruby_setup = steps.find { |step| step["uses"] == "ruby/setup-ruby@v1" }
+abort "CI must use the runner-provisioned Ruby runtime" if ruby_setup
 checkouts = steps.select { |step| step["uses"] == "actions/checkout@v4" }
 
 abort "expected one checkout route" unless checkouts.length == 1
