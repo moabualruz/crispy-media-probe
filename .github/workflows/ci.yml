@@ -6,25 +6,146 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: crispy-media-probe-pr-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  test:
-    runs-on: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.actor == github.repository_owner || github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login == github.repository_owner && github.actor == github.repository_owner) && fromJSON('["self-hosted", "linux", "x64", "generic"]') || 'ubuntu-latest' }}
+  prepare:
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && fromJSON(format('["self-hosted", "linux", "x64", "generic", "pr-{0}-{1}"]', github.repository_id, github.event.pull_request.number))) || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && github.actor == github.repository_owner && fromJSON('["self-hosted", "linux", "x64", "generic"]')) || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: verify brokered PR source
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          if [ ! -L "$GITHUB_WORKSPACE" ]; then
+            echo "brokered PR workspace is not a worktree symlink" >&2
+            exit 1
+          fi
+          workspace="$(realpath "$GITHUB_WORKSPACE")"
+          worktree="$(git -C "$workspace" rev-parse --show-toplevel)"
+          if [ "$worktree" != "$workspace" ]; then
+            echo "brokered PR workspace is not the worktree root" >&2
+            exit 1
+          fi
+          actual_sha="$(git -C "$workspace" rev-parse HEAD)"
+          if [ "$actual_sha" != "$GITHUB_SHA" ]; then
+            echo "brokered workspace is at $actual_sha, expected $GITHUB_SHA" >&2
+            exit 1
+          fi
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
-      - name: test runner routing
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.toml') }}
+          restore-keys: cargo-${{ runner.os }}-
+      - name: fetch Rust dependencies
+        run: cargo fetch
+      - name: verify runner routing contract
         run: python3 .github/test-ci-runner-routing.py
-      - name: cargo fmt
-        run: cargo fmt --check
-      - name: cargo clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
-      - name: cargo test
-        run: cargo test --all-features
-      - name: cargo doc
-        run: cargo doc --no-deps
-      - name: cargo package
-        run: cargo package
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+      - name: verify parsed checkout workflow contract
+        run: ruby .github/test-ci-workflow.rb
+      - name: archive checked out source for hosted jobs
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+        run: git -C "$GITHUB_WORKSPACE" archive --format=tar "$GITHUB_SHA" | gzip -n -c > "$RUNNER_TEMP/source.tar.gz"
+      - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+        with:
+          name: source-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/source.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  gate:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        gate: [fmt, clippy, test, doc, package]
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && fromJSON(format('["self-hosted", "linux", "x64", "generic", "pr-{0}-{1}"]', github.repository_id, github.event.pull_request.number))) || ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && github.actor == github.repository_owner && fromJSON('["self-hosted", "linux", "x64", "generic"]')) || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/download-artifact@v4
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+        with:
+          name: source-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/source
+      - name: unpack checked out source for hosted jobs
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+        run: tar -xzf "$RUNNER_TEMP/source/source.tar.gz" -C "$GITHUB_WORKSPACE"
+      - name: verify brokered PR source
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          if [ ! -L "$GITHUB_WORKSPACE" ]; then
+            echo "brokered PR workspace is not a worktree symlink" >&2
+            exit 1
+          fi
+          workspace="$(realpath "$GITHUB_WORKSPACE")"
+          worktree="$(git -C "$workspace" rev-parse --show-toplevel)"
+          if [ "$worktree" != "$workspace" ]; then
+            echo "brokered PR workspace is not the worktree root" >&2
+            exit 1
+          fi
+          actual_sha="$(git -C "$workspace" rev-parse HEAD)"
+          if [ "$actual_sha" != "$GITHUB_SHA" ]; then
+            echo "brokered workspace is at $actual_sha, expected $GITHUB_SHA" >&2
+            exit 1
+          fi
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+      - uses: actions/cache/restore@v4
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.toml') }}
+      - name: run ${{ matrix.gate }}
+        env:
+          GATE: ${{ matrix.gate }}
+          CARGO_TARGET_DIR: ${{ runner.temp }}/cargo-target/${{ github.run_id }}-${{ github.run_attempt }}/${{ matrix.gate }}
+        run: |
+          case "$GATE" in
+            fmt) cargo fmt --check ;;
+            clippy) cargo clippy --all-targets --all-features -- -D warnings ;;
+            test) cargo test --all-features ;;
+            doc) cargo doc --no-deps ;;
+            package) cargo package ;;
+            *) echo "unknown gate: $GATE" >&2; exit 2 ;;
+          esac
+
+  required:
+    name: Required CI
+    if: ${{ always() }}
+    needs: [prepare, gate]
+    runs-on: ubuntu-latest
+    env:
+      PREPARE_RESULT: ${{ needs.prepare.result }}
+      GATE_RESULT: ${{ needs.gate.result }}
+    steps:
+      - name: Require every CI gate to pass
+        run: |
+          failed=0
+          for result in "$PREPARE_RESULT" "$GATE_RESULT"; do
+            if [ "$result" != success ]; then
+              echo "::error::required CI job ended with $result" >&2
+              failed=1
+            fi
+          done
+          exit "$failed"

@@ -4,14 +4,19 @@ import unittest
 
 WORKFLOWS = Path(__file__).with_name("workflows")
 CI_TRUSTED_RUNNER_EXPRESSION = (
-    "${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && "
-    "github.actor == github.repository_owner || "
-    "github.event_name == 'pull_request' && "
+    "${{ (github.event_name == 'pull_request' && "
     "github.event.pull_request.head.repo.full_name == github.repository && "
-    "github.event.pull_request.user.login == github.repository_owner && "
-    "github.actor == github.repository_owner) && "
-    "fromJSON('[\"self-hosted\", \"linux\", \"x64\", \"generic\"]') || "
+    "fromJSON(format('[\"self-hosted\", \"linux\", \"x64\", \"generic\", \"pr-{0}-{1}\"]', "
+    "github.repository_id, github.event.pull_request.number))) || "
+    "((github.event_name == 'push' || github.event_name == 'workflow_dispatch') && "
+    "github.ref == 'refs/heads/main' && "
+    "github.actor == github.repository_owner && "
+    "fromJSON('[\"self-hosted\", \"linux\", \"x64\", \"generic\"]')) || "
     "'ubuntu-latest' }}"
+)
+CI_TRUSTED_PR_CHECKOUT_CONDITION = (
+    "github.event_name != 'pull_request' || "
+    "github.event.pull_request.head.repo.full_name != github.repository"
 )
 RELEASE_TRUSTED_RUNNER_EXPRESSION = (
     "${{ github.event_name == 'workflow_dispatch' && "
@@ -22,40 +27,137 @@ RELEASE_TRUSTED_RUNNER_EXPRESSION = (
 )
 
 
-def runner(workflow, event, ref, head_repo="", author="", actor="moabualruz"):
+def runner(
+    workflow,
+    event,
+    ref,
+    head_repo="",
+    author="",
+    actor="moabualruz",
+    repository_id=123,
+    pr_number=7,
+    run_id=55,
+    run_attempt=1,
+):
     if workflow == "release":
         trusted = (
             event == "workflow_dispatch"
             and ref == "refs/heads/main"
             and actor == "moabualruz"
         )
+        return "self-hosted" if trusted else "ubuntu-latest"
     else:
         trusted_push = event == "push" and ref == "refs/heads/main"
+        trusted_dispatch = event == "workflow_dispatch" and ref == "refs/heads/main"
         trusted_pr = (
             event == "pull_request"
             and head_repo == "moabualruz/crispy-media-probe"
-            and author == "moabualruz"
-            and actor == "moabualruz"
         )
         trusted_push = trusted_push and actor == "moabualruz"
-        trusted = trusted_push or trusted_pr
-    return "self-hosted" if trusted else "ubuntu-latest"
+        trusted_dispatch = trusted_dispatch and actor == "moabualruz"
+        if trusted_pr:
+            return f"self-hosted:pr-{repository_id}-{pr_number}"
+        return "self-hosted" if trusted_push or trusted_dispatch else "ubuntu-latest"
+
+
+def checkout_enabled(event, head_repo="", author="", actor="moabualruz"):
+    trusted_pr = (
+        event == "pull_request"
+        and head_repo == "moabualruz/crispy-media-probe"
+    )
+    return not trusted_pr
 
 
 class RunnerRoutingTests(unittest.TestCase):
     def test_workflow_uses_the_tested_trust_expression(self):
         ci = (WORKFLOWS / "ci.yml").read_text()
         release = (WORKFLOWS / "release.yml").read_text()
-        self.assertIn(f"runs-on: {CI_TRUSTED_RUNNER_EXPRESSION}", ci)
+        self.assertEqual(ci.count(f"runs-on: {CI_TRUSTED_RUNNER_EXPRESSION}"), 2)
+        self.assertIn(f"if: {CI_TRUSTED_PR_CHECKOUT_CONDITION}", ci)
+        self.assertIn("ref: ${{ github.sha }}", ci)
+        self.assertIn("group: crispy-media-probe-pr-${{ github.event.pull_request.number || github.ref }}", ci)
+        self.assertIn("cancel-in-progress: false", ci)
+        self.assertIn("if: ${{ always() }}", ci)
+        self.assertIn("  required:\n", ci)
+        self.assertIn("needs: [prepare, gate]", ci)
         self.assertIn(f"runs-on: {RELEASE_TRUSTED_RUNNER_EXPRESSION}", release)
 
-    def test_owner_authored_same_repository_pr_is_trusted(self):
+    def test_ci_prepares_source_once_then_runs_independent_gates(self):
+        ci = (WORKFLOWS / "ci.yml").read_text()
+        gate = ci.split("  gate:\n", maxsplit=1)[1]
+        self.assertEqual(ci.count("uses: actions/checkout@v4"), 1)
+        self.assertIn("  prepare:\n", ci)
+        self.assertIn("    needs: prepare\n", gate)
+        self.assertIn("        gate: [fmt, clippy, test, doc, package]", gate)
+        self.assertNotIn("uses: actions/checkout@v4", gate)
+        self.assertEqual(ci.count("uses: actions/cache@v4"), 1)
+        self.assertIn("actions/cache/restore@v4", gate)
+        self.assertIn(f"if: {CI_TRUSTED_PR_CHECKOUT_CONDITION}", gate)
+        self.assertIn("actions/upload-artifact@v4", ci)
+        self.assertIn("actions/download-artifact@v4", gate)
+        self.assertIn("${{ runner.temp }}/cargo-target/${{ github.run_id }}-${{ github.run_attempt }}/${{ matrix.gate }}", gate)
+
+    def test_same_repository_pr_is_trusted_regardless_of_author_or_actor(self):
         self.assertEqual(
-            runner("ci", "pull_request", "", "moabualruz/crispy-media-probe", "moabualruz"),
-            "self-hosted",
+            runner("ci", "pull_request", "", "moabualruz/crispy-media-probe", "contributor", actor="contributor"),
+            "self-hosted:pr-123-7",
         )
 
-    def test_non_owner_push_to_owner_authored_pr_uses_hosted_runner(self):
+    def test_same_pr_runs_and_attempts_reuse_one_label(self):
+        first = runner(
+            "ci", "pull_request", "", "moabualruz/crispy-media-probe", "moabualruz", run_id=900
+        )
+        retry = runner(
+            "ci",
+            "pull_request",
+            "",
+            "moabualruz/crispy-media-probe",
+            "moabualruz",
+            run_id=900,
+            run_attempt=2,
+        )
+        parallel = runner(
+            "ci", "pull_request", "", "moabualruz/crispy-media-probe", "moabualruz", run_id=901
+        )
+        other_pr = runner(
+            "ci", "pull_request", "", "moabualruz/crispy-media-probe", "moabualruz", pr_number=8
+        )
+        other_repo = runner(
+            "ci",
+            "pull_request",
+            "",
+            "moabualruz/crispy-media-probe",
+            "moabualruz",
+            repository_id=124,
+        )
+        self.assertEqual(first, "self-hosted:pr-123-7")
+        self.assertEqual(retry, first)
+        self.assertEqual(parallel, first)
+        self.assertEqual(other_pr, "self-hosted:pr-123-8")
+        self.assertEqual(other_repo, "self-hosted:pr-124-7")
+        self.assertEqual(len({first, other_pr, other_repo}), 3)
+
+    def test_every_same_repository_pr_skips_checkout(self):
+        self.assertFalse(
+            checkout_enabled("pull_request", "moabualruz/crispy-media-probe", "moabualruz")
+        )
+        self.assertFalse(
+            checkout_enabled("pull_request", "moabualruz/crispy-media-probe", "contributor")
+        )
+        self.assertTrue(
+            checkout_enabled("pull_request", "contributor/crispy-media-probe", "moabualruz")
+        )
+        self.assertFalse(
+            checkout_enabled(
+                "pull_request",
+                "moabualruz/crispy-media-probe",
+                "moabualruz",
+                actor="contributor",
+            )
+        )
+        self.assertTrue(checkout_enabled("push", actor="moabualruz"))
+
+    def test_same_repository_pr_actor_does_not_change_runner_route(self):
         self.assertEqual(
             runner(
                 "ci",
@@ -65,13 +167,13 @@ class RunnerRoutingTests(unittest.TestCase):
                 "moabualruz",
                 actor="contributor",
             ),
-            "ubuntu-latest",
+            "self-hosted:pr-123-7",
         )
 
-    def test_same_repository_non_owner_pr_uses_hosted_runner(self):
+    def test_same_repository_pr_author_does_not_change_runner_route(self):
         self.assertEqual(
             runner("ci", "pull_request", "", "moabualruz/crispy-media-probe", "contributor"),
-            "ubuntu-latest",
+            "self-hosted:pr-123-7",
         )
 
     def test_fork_pr_uses_hosted_runner_even_when_owner_authored(self):
@@ -80,8 +182,17 @@ class RunnerRoutingTests(unittest.TestCase):
             "ubuntu-latest",
         )
 
-    def test_ci_manual_dispatch_uses_hosted_runner(self):
-        self.assertEqual(runner("ci", "workflow_dispatch", "refs/heads/main"), "ubuntu-latest")
+    def test_ci_manual_dispatch_from_owner_main_uses_personal_runner(self):
+        self.assertEqual(runner("ci", "workflow_dispatch", "refs/heads/main"), "self-hosted")
+
+    def test_ci_manual_dispatch_from_non_main_or_non_owner_uses_hosted_runner(self):
+        self.assertEqual(
+            runner("ci", "workflow_dispatch", "refs/heads/feature"), "ubuntu-latest"
+        )
+        self.assertEqual(
+            runner("ci", "workflow_dispatch", "refs/heads/main", actor="contributor"),
+            "ubuntu-latest",
+        )
 
     def test_release_dispatch_from_main_by_owner_is_trusted(self):
         self.assertEqual(
