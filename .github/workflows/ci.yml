@@ -83,7 +83,10 @@ jobs:
           path: ${{ runner.temp }}/source
       - name: unpack checked out source for hosted jobs
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
-        run: tar -xzf "$RUNNER_TEMP/source/source.tar.gz" -C "$GITHUB_WORKSPACE"
+        run: |
+          # Persistent runners keep old files: start from an empty workspace so the tree is exactly GITHUB_SHA.
+          find "$GITHUB_WORKSPACE" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+          tar -xzf "$RUNNER_TEMP/source/source.tar.gz" -C "$GITHUB_WORKSPACE"
       - name: verify brokered PR source
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         run: |

@@ -221,6 +221,36 @@ class RunnerRoutingTests(unittest.TestCase):
             "ubuntu-latest",
         )
 
+    def test_unpack_step_replaces_stale_workspace_with_exact_source(self):
+        import re, subprocess, tarfile, tempfile, os
+        text = Path(__file__).with_name("workflows").joinpath("ci.yml").read_text()
+        gate = text.split("\n  gate:\n", 1)[1].split("\n  required:\n", 1)[0]
+        match = re.search(
+            r"- name: unpack checked out source for hosted jobs\n(?:        if: .*\n)?        run: \|\n((?:          .*\n)+)",
+            gate,
+        )
+        self.assertTrue(match, "unpack step not found")
+        script = "\n".join(line[10:] for line in match.group(1).splitlines())
+        with tempfile.TemporaryDirectory() as tmp:
+            work, temp = Path(tmp, "ws"), Path(tmp, "tmp")
+            (temp / "source").mkdir(parents=True)
+            work.mkdir()
+            (work / "stale.txt").write_text("left over from an earlier run")
+            (work / ".hidden").write_text("stale")
+            (work / "keep.txt").write_text("old")
+            src = Path(tmp, "src")
+            src.mkdir()
+            (src / "keep.txt").write_text("new")
+            with tarfile.open(temp / "source" / "source.tar.gz", "w:gz") as archive:
+                archive.add(src / "keep.txt", arcname="keep.txt")
+            subprocess.run(
+                ["bash", "-e", "-c", script],
+                check=True,
+                env={**os.environ, "GITHUB_WORKSPACE": str(work), "RUNNER_TEMP": str(temp)},
+            )
+            self.assertEqual(sorted(p.name for p in work.iterdir()), ["keep.txt"])
+            self.assertEqual((work / "keep.txt").read_text(), "new")
+
 
 if __name__ == "__main__":
     unittest.main()
