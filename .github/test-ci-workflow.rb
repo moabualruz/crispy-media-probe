@@ -7,7 +7,11 @@ workflow = YAML.safe_load(File.read(".github/workflows/ci.yml"), aliases: false)
 release = YAML.safe_load(File.read(".github/workflows/release.yml"), aliases: false)
 jobs = workflow.fetch("jobs")
 steps = jobs.values.flat_map { |job| job.fetch("steps", []) }
-ruby_setup = steps.find { |step| step["uses"] == "ruby/setup-ruby@v1" }
+def uses_ruby_setup?(reference)
+  reference.to_s.start_with?("ruby/setup-ruby")
+end
+abort "Ruby setup guard missed non-v1 references" unless uses_ruby_setup?("ruby/setup-ruby@v2") && uses_ruby_setup?("ruby/setup-ruby") && !uses_ruby_setup?("actions/checkout@v4")
+ruby_setup = steps.find { |step| uses_ruby_setup?(step["uses"]) }
 abort "CI must use the runner-provisioned Ruby runtime" if ruby_setup
 checkouts = steps.select { |step| step["uses"] == "actions/checkout@v4" }
 

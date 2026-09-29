@@ -49,10 +49,10 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.toml') }}
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
       - name: fetch Rust dependencies
-        run: cargo fetch
+        run: cargo fetch --locked
       - name: verify runner routing contract
         run: python3 .github/test-ci-runner-routing.py
       - name: verify parsed checkout workflow contract
@@ -112,7 +112,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.toml') }}
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
       - name: run ${{ matrix.gate }}
         env:
           GATE: ${{ matrix.gate }}
@@ -120,10 +120,10 @@ jobs:
         run: |
           case "$GATE" in
             fmt) cargo fmt --check ;;
-            clippy) cargo clippy --all-targets --all-features -- -D warnings ;;
-            test) cargo test --all-features ;;
-            doc) cargo doc --no-deps ;;
-            package) cargo package ;;
+            clippy) cargo clippy --locked --all-targets --all-features -- -D warnings ;;
+            test) cargo test --locked --all-features ;;
+            doc) cargo doc --locked --no-deps ;;
+            package) cargo package --locked ;;
             *) echo "unknown gate: $GATE" >&2; exit 2 ;;
           esac
 
