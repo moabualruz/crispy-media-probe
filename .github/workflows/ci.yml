@@ -63,7 +63,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
         with:
-          name: source-${{ github.run_id }}-${{ github.run_attempt }}
+          overwrite: true
+          name: source-${{ github.run_id }}
           path: ${{ runner.temp }}/source.tar.gz
           if-no-files-found: error
           retention-days: 1
@@ -79,7 +80,7 @@ jobs:
       - uses: actions/download-artifact@v4
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
         with:
-          name: source-${{ github.run_id }}-${{ github.run_attempt }}
+          name: source-${{ github.run_id }}
           path: ${{ runner.temp }}/source
       - name: unpack checked out source for hosted jobs
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
