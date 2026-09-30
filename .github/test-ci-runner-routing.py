@@ -97,6 +97,13 @@ class RunnerRoutingTests(unittest.TestCase):
         self.assertIn("actions/download-artifact@v4", gate)
         self.assertIn("${{ runner.temp }}/cargo-target/${{ github.run_id }}-${{ github.run_attempt }}/${{ matrix.gate }}", gate)
 
+    def test_artifact_name_survives_rerun_of_failed_jobs(self):
+        ci = (WORKFLOWS / "ci.yml").read_text()
+        for line in ci.splitlines():
+            if line.strip().startswith("name: source-"):
+                self.assertNotIn("run_attempt", line)
+        self.assertEqual(ci.count("overwrite: true"), ci.count("actions/upload-artifact@"))
+
     def test_same_repository_pr_is_trusted_regardless_of_author_or_actor(self):
         self.assertEqual(
             runner("ci", "pull_request", "", "moabualruz/crispy-media-probe", "contributor", actor="contributor"),
